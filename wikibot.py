@@ -24,6 +24,7 @@ definitionData = {
     "Shared function" : { 'color': 12, 'name' : 'Both' }
 }
 
+#keyword:ircColor
 keywords = {
 "matrix":3,
 "vector2":3,
@@ -83,7 +84,7 @@ puns = {
 ",":10,
 }
 
-class TestBot(irc.bot.SingleServerIRCBot):
+class WikiBot(irc.bot.SingleServerIRCBot):
     def __init__(self, channel, nickname, server, port=6667):
         irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
         self.channel = channel
@@ -103,21 +104,10 @@ class TestBot(irc.bot.SingleServerIRCBot):
         return
 
     def on_dccmsg(self, c, e):
-        # non-chat DCC messages are raw bytes; decode as text
-        text = e.arguments[0].decode('utf-8')
-        c.privmsg("You said: " + text)
+        return
 
     def on_dccchat(self, c, e):
-        if len(e.arguments) != 2:
-            return
-        args = e.arguments[1].split()
-        if len(args) == 4:
-            try:
-                address = ip_numstr_to_quad(args[2])
-                port = int(args[3])
-            except ValueError:
-                return
-            self.dcc_connect(address, port)
+        return
 
     def do_command(self, e, args, privMessager):
         target = privMessager if privMessager else channel
@@ -126,16 +116,28 @@ class TestBot(irc.bot.SingleServerIRCBot):
         if cmd == "!wiki" and len(args)>1:
             wiki(c,args,target)
 
+global stack;
+stack = 0;
 def wiki(c,args,target):
+    global stack;
+    if stack == 6:
+        stack = 0;
+        return;
+    stack += 1
+     
     fnName = args[1];
     url = 'http://wiki.multitheftauto.com/wiki/'+fnName
     try:
-        page = urllib2.urlopen(url).read()
-    except urllib2.HTTPError, err: #To-do: Try again
+        page = urllib2.urlopen(url)
+    except urllib2.URLError, err: #To-do: Try again
+        print(urllib2.URLError, err)
         return
-    except urllib2.HTTPError, err:
+    try:
+        page = page.read()
+    except urllib2.URLError, err:
+        print(urllib2.URLError, err)
         return
-    
+        
     # Let's strip out examples onwards if we've found them            
     exampleStart = page.find('<span class="mw-headline" id="Example">')
     if exampleStart != -1:
@@ -157,6 +159,8 @@ def wiki(c,args,target):
             fnType = meta.get('data-subcaption')
             if definitionData.get(fnType):
                 keywords[fnName] = definitionData[fnType]['color']
+            else:
+                continue
             
             codeList = soup.select("pre.lang-lua")
             if codeList[0]:
@@ -165,35 +169,36 @@ def wiki(c,args,target):
                 for code in serverCodeList:
                     fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
                     outputSyntax(c,fnName,fnTypeNow,code.string,target)
-                    
+                
+                #Then a client syntax
                 clientCodeList = soup.select("div.clientContent pre.lang-lua")
                 for code in clientCodeList:
                     fnTypeNow = "Client-only function" if fnType.find("function") != -1 else "Clientside event"
                     outputSyntax(c,fnName,fnTypeNow,code.string,target)
                 
+                #Fall back to content without a <section/> tag
                 if len(serverCodeList) == 0 and len(clientCodeList) == 0:
                     for code in codeList:
                         outputSyntax (c,fnName,fnType,code.string,target)
             
             print("\x02"+url+"\x02")
             c.privmsg(target,"\x02"+url+"\x02")
+            stack = 0
+            return
 
 def main():
     import sys
-    bot = TestBot(channel, nick, server, port)
+    bot = WikiBot(channel, nick, server, port)
     bot.start()
     
 def cleanString(str):
-    return str.replace("\t",' ').replace("\n",'').replace("\r",'')
+    return (" ").join(str.replace("\t",' ').replace("\n",'').replace("\r",'').split())
     
 def reg_repl(m):
     color = "%02d" %keywords[m.group(0)]
     return "\x03" + color + m.group(0) + "\x03"
     
 def syntaxHighlight(str,fnName,color):
-    strSplit = str.split()   
-    str = (" ").join(strSplit)
-
     for k in keywords:
         str = re.sub(r"\b%s\b"%k,reg_repl,str)   
     
