@@ -5,81 +5,82 @@ import irc.bot
 import irc.strings
 import re
 from irc.client import ip_numstr_to_quad, ip_quad_to_numstr
+f = open("password.txt","r")
+nspass = f.readline().rstrip()
+f.close()
+
 
 channel = "#mta.scripting"
 nick = "wikibot"
 server = "irc.gtanet.com"
 port = 6667
-
-f = open("password.txt","r")
-nspass = f.readline().rstrip()
-f.close()
+nspass = nspass
 
 definitionData = {
-    "Clientside event" : { 'color': "4", 'name' : 'Client Event' },
-    "Serverside event" : { 'color': "7", 'name' : 'Client Event' },
-    "Client-only function" : { 'color': "4", 'name' : 'Client' },
-    "Server-only function" : { 'color': "7", 'name' : 'Server' },
-    "Shared function" : { 'color': "12", 'name' : 'Both' }
+    "Clientside event" : { 'color': 4, 'name' : 'Client Event' },
+    "Serverside event" : { 'color': 7, 'name' : 'Client Event' },
+    "Client-only function" : { 'color': 4, 'name' : 'Client' },
+    "Server-only function" : { 'color': 7, 'name' : 'Server' },
+    "Shared function" : { 'color': 12, 'name' : 'Both' }
 }
 
 keywords = {
-"matrix":"3",
-"vector2":"3",
-"vector3":"3",
-"vector4":"3",
-"ban":"3",
-"blip":"3",
-"bool":"3",
-"boolean":"3",
-"callback":"3",
-"client":"3",
-"colcircle":"3",
-"colcube":"3",
-"colshape":"3",
-"colsphere":"3",
-"colsquare":"3",
-"coltube":"3",
-"console":"3",
-"element":"3",
-"float":"3",
-"int":"3",
-"marker":"3",
-"object":"3",
-"ped":"3",
-"pickup":"3",
-"player":"3",
-"radararea":"3",
-"remoteclient":"3",
-"resource":"3",
-"string":"3",
-"table":"3",
-"team":"3",
-"textdisplay":"3",
-"textitem":"3",
-"vehicle":"3",
-"xmlnode":"3",
-"false":"6",
-"true":"6",
-"nil":"6",
-"function":"6",
+"matrix":3,
+"vector2":3,
+"vector3":3,
+"vector4":3,
+"ban":3,
+"blip":3,
+"bool":3,
+"boolean":3,
+"callback":3,
+"client":3,
+"colcircle":3,
+"colcube":3,
+"colshape":3,
+"colsphere":3,
+"colsquare":3,
+"coltube":3,
+"console":3,
+"element":3,
+"float":3,
+"int":3,
+"marker":3,
+"object":3,
+"ped":3,
+"pickup":3,
+"player":3,
+"radararea":3,
+"remoteclient":3,
+"resource":3,
+"string":3,
+"table":3,
+"team":3,
+"textdisplay":3,
+"textitem":3,
+"vehicle":3,
+"xmlnode":3,
+"false":6,
+"true":6,
+"nil":6,
+"function":6,
 }
 
 puns = {
-"\\":"10",
-"\"":"10",
-"'":"10",
-"-":"10",
-"+":"10",
-"=":"10",
-"[":"10",
-"]":"10",
-"(":"10",
-")":"10",
-"*":"10",
-"/":"10",
-"^":"10",
-",":"10"
+"\\":10,
+"\"":10,
+"'":10,
+"-":10,
+"+":10,
+"=":10,
+"[":10,
+"]":10,
+"(":10,
+")":10,
+"*":10,
+"/":10,
+"^":10,
+",":10,
 }
 
 class TestBot(irc.bot.SingleServerIRCBot):
@@ -185,27 +186,29 @@ def main():
 def cleanString(str):
     return str.replace("\t",' ').replace("\n",'').replace("\r",'')
     
+def reg_repl(m):
+    color = "%02d" %keywords[m.group(0)]
+    return "\x03" + color + m.group(0) + "\x03"
+    
 def syntaxHighlight(str,fnName,color):
     strSplit = str.split()   
-    for i in xrange(len(strSplit)):
-        curStr = strSplit[i]
-        if keywords.get(curStr):
-            color = keywords.get(curStr)
-            strSplit[i] = "\x03" + color + curStr + "\x03"    
-            
     str = (" ").join(strSplit)
+
+    for k in keywords:
+        str = re.sub(r"\b%s\b"%k,reg_repl,str)   
+    
     for p in puns:
-        color = puns[p]
-        str = str.replace(p,"\x03" + color + p + "\x03")
+        color = "%02d" % puns[p]
+        str = str.replace(p,"\x03" + color + p + "\x03\x0F")
     
     return str
         
 
 def outputSyntax(c,fnName,fnType,text,target):
     text = cleanString(text)
-    color = definitionData[fnType]['color']
+    color = "%02d" % definitionData[fnType]['color']
     text = syntaxHighlight(text,fnName,color)
-    output = "\x02\x03"+color+definitionData[fnType]['name']+"\x02\x03"
+    output = "\x02\x03"+color+definitionData[fnType]['name']+"\x02\x03\x0F"
     output += ": " + text
     print(output)
     try:
