@@ -9,12 +9,20 @@ f = open("password.txt","r")
 nspass = f.readline().rstrip()
 f.close()
 
-
-channel = "#mta.scripting"
+####################################################
+#### CONFIG
+####################################################
+channels = ["#mta.scripting","#mta.dev"]
 nick = "wikibot"
 server = "irc.gtanet.com"
 port = 6667
 nspass = nspass
+
+maxTries = 6   # Maximum number of times to try getting info from wiki
+
+####################################################
+#### WIKI DEFINITIONS
+####################################################
 
 definitionData = {
     "Clientside event" : { 'color': 4, 'name' : 'Client Event' },
@@ -24,6 +32,9 @@ definitionData = {
     "Shared function" : { 'color': 12, 'name' : 'Both' }
 }
 
+####################################################
+#### SYNTAX HIGHLIGHTS DEFS
+####################################################
 #keyword:ircColor
 keywords = {
 "matrix":3,
@@ -84,23 +95,28 @@ puns = {
 ",":10,
 }
 
+####################################################
+#### PURE IRC LOGIC
+####################################################
 class WikiBot(irc.bot.SingleServerIRCBot):
-    def __init__(self, channel, nickname, server, port=6667):
+    def __init__(self, channels, nickname, server, port=6667):
         irc.bot.SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
-        self.channel = channel
+        self.stack = 0;
+        self.channelJoinList = channels
 
     def on_nicknameinuse(self, c, e):
         c.nick(c.get_nickname() + "_")
 
     def on_welcome(self, c, e):
-        c.join(self.channel)
+        for ch in self.channelJoinList:
+            c.join(ch)
         c.privmsg("nickserv","identify "+nspass)
 
     def on_privmsg(self, c, e):
         self.do_command(e, e.arguments[0].split(), e.source.nick)
 
     def on_pubmsg(self, c, e):
-        self.do_command(e, e.arguments[0].split(), None)
+        self.do_command(e, e.arguments[0].split(), e.target)
         return
 
     def on_dccmsg(self, c, e):
@@ -108,89 +124,95 @@ class WikiBot(irc.bot.SingleServerIRCBot):
 
     def on_dccchat(self, c, e):
         return
+        
+    def on_kick(self, c, e):
+        print(c.join,e.target,e)
+        c.join(e.target)  # Try to rejoin channel once when kicked
+        
+    def on_invite(self, c, e):
+        print(c.join,e.target,e,e.source,e.arguments,e.type)
+        c.join(e.arguments[0])
 
-    def do_command(self, e, args, privMessager):
-        target = privMessager if privMessager else channel
+    def do_command(self, e, args, target):
         c = self.connection
         cmd = args[0]
         if cmd == "!wiki" and len(args)>1:
-            wiki(c,args,target)
+            self.wiki(c,args,target)
 
-global stack;
-stack = 0;
-def wiki(c,args,target):
-    global stack;
-    if stack == 6:
-        stack = 0;
-        return;
-    stack += 1
-     
-    fnName = args[1];
-    url = 'http://wiki.multitheftauto.com/wiki/'+fnName
-    try:
-        page = urllib2.urlopen(url)
-    except urllib2.URLError, err: #To-do: Try again
-        print(urllib2.URLError, err)
-        return
-    try:
-        page = page.read()
-    except urllib2.URLError, err:
-        print(urllib2.URLError, err)
-        return
-        
-    # Let's strip out examples onwards if we've found them            
-    exampleStart = page.find('<span class="mw-headline" id="Example">')
-    if exampleStart != -1:
-        page = page[:exampleStart]
-    
-    soup = BeautifulSoup(page, 'html.parser')           
-    #Scan for deprecated functions
-    deprecated = soup.find(text=re.compile('This function is deprecated. This means that its use is discouraged and that it might not exist in future versions.'))
-    if deprecated > 0:
-        a = deprecated.parent.parent.parent.find("a")
-        if a:
-            args[1] = a.get('href').replace('/wiki/','')
-            return wiki(c,args,target)
-    
-    for meta in soup.find_all('meta'):
-        if meta.get('name') == 'headingclass':
-            fnName = soup.select("h1")[0].string
-            fnName = fnName[0].lower() + fnName[1:]                   
-            fnType = meta.get('data-subcaption')
-            if definitionData.get(fnType):
-                keywords[fnName] = definitionData[fnType]['color']
-            else:
-                continue
-            
-            codeList = soup.select("pre.lang-lua")
-            if codeList[0]:
-                #Try and find a server syntax
-                serverCodeList = soup.select("div.serverContent pre.lang-lua")
-                for code in serverCodeList:
-                    fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
-                    outputSyntax(c,fnName,fnTypeNow,code.string,target)
-                
-                #Then a client syntax
-                clientCodeList = soup.select("div.clientContent pre.lang-lua")
-                for code in clientCodeList:
-                    fnTypeNow = "Client-only function" if fnType.find("function") != -1 else "Clientside event"
-                    outputSyntax(c,fnName,fnTypeNow,code.string,target)
-                
-                #Fall back to content without a <section/> tag
-                if len(serverCodeList) == 0 and len(clientCodeList) == 0:
-                    for code in codeList:
-                        outputSyntax (c,fnName,fnType,code.string,target)
-            
-            print("\x02"+url+"\x02")
-            c.privmsg(target,"\x02"+url+"\x02")
-            stack = 0
+   
+####################################################
+#### COMMAND LOGIC
+####################################################
+    def wiki(self,c,args,target):
+        if self.stack == maxTries:
+            self.stack = 0;
+            return;
+        self.stack += 1
+         
+        fnName = args[1];
+        url = 'http://wiki.multitheftauto.com/wiki/'+fnName
+        try:
+            page = urllib2.urlopen(url)
+        except urllib2.URLError, err: #To-do: Try again
+            print(urllib2.URLError, err)
             return
-
-def main():
-    import sys
-    bot = WikiBot(channel, nick, server, port)
-    bot.start()
-    
+        try:
+            page = page.read()
+        except urllib2.URLError, err:
+            print(urllib2.URLError, err)
+            return
+            
+        # Let's strip out examples onwards if we've found them            
+        exampleStart = page.find('<span class="mw-headline" id="Example">')
+        if exampleStart != -1:
+            page = page[:exampleStart]
+        
+        soup = BeautifulSoup(page, 'html.parser')           
+        #Scan for deprecated functions
+        deprecated = soup.find(text=re.compile('This function is deprecated. This means that its use is discouraged and that it might not exist in future versions.'))
+        if deprecated > 0:
+            a = deprecated.parent.parent.parent.find("a")
+            if a:
+                args[1] = a.get('href').replace('/wiki/','')
+                return wiki(c,args,target)
+        
+        for meta in soup.find_all('meta'):
+            if meta.get('name') == 'headingclass':
+                fnName = soup.select("h1")[0].string
+                fnName = fnName[0].lower() + fnName[1:]                   
+                fnType = meta.get('data-subcaption')
+                if definitionData.get(fnType):
+                    keywords[fnName] = definitionData[fnType]['color']
+                else:
+                    continue
+                
+                codeList = soup.select("pre.lang-lua")
+                if codeList[0]:
+                    #Try and find a server syntax
+                    serverCodeList = soup.select("div.serverContent pre.lang-lua")
+                    for code in serverCodeList:
+                        fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
+                        outputSyntax(c,fnName,fnTypeNow,code.string,target)
+                    
+                    #Then a client syntax
+                    clientCodeList = soup.select("div.clientContent pre.lang-lua")
+                    for code in clientCodeList:
+                        fnTypeNow = "Client-only function" if fnType.find("function") != -1 else "Clientside event"
+                        outputSyntax(c,fnName,fnTypeNow,code.string,target)
+                    
+                    #Fall back to content without a <section/> tag
+                    if len(serverCodeList) == 0 and len(clientCodeList) == 0:
+                        for code in codeList:
+                            outputSyntax (c,fnName,fnType,code.string,target)
+                
+                print("\x02"+url+"\x02")
+                c.privmsg(target,"\x02"+url+"\x02")
+                self.stack = 0
+                return
+   
+####################################################
+#### STRING OPERATIONS
+####################################################
 def cleanString(str):
     return (" ").join(str.replace("\t",' ').replace("\n",'').replace("\r",'').split())
     
@@ -220,6 +242,15 @@ def outputSyntax(c,fnName,fnType,text,target):
         c.privmsg(target,output)    
     except Exception,e: 
         print str(e)
+
+
+####################################################
+#### MAIN
+####################################################
+def main():
+    import sys
+    bot = WikiBot(channels, nick, server, port)
+    bot.start()
 
 if __name__ == "__main__":
     main()
