@@ -18,6 +18,7 @@ server = "irc.gtanet.com"
 port = 6667
 nspass = nspass
 
+maxMessages = 4 # Maximum number of messages (exc url) before cutting off. Use private commands to avoid
 maxTries = 6   # Maximum number of times to try getting info from wiki
 
 ####################################################
@@ -132,18 +133,34 @@ class WikiBot(irc.bot.SingleServerIRCBot):
     def on_invite(self, c, e):
         print(c.join,e.target,e,e.source,e.arguments,e.type)
         c.join(e.arguments[0])
+        
+    def msg(self,target,output,useNotice): #Wrapper to catch any errors
+        if useNotice:
+            try:
+                print("notice:",target,output)
+                self.connection.notice(target,output)    
+            except Exception,e: 
+                print str(e)
+        else:
+            try:
+                print(target,output)
+                self.connection.privmsg(target,output)    
+            except Exception,e: 
+                print str(e)
 
     def do_command(self, e, args, target):
         c = self.connection
         cmd = args[0]
         if cmd == "!wiki" and len(args)>1:
-            self.wiki(c,args,target)
+            self.wiki(c,args,target,False)
+        elif cmd == ".wiki" and len(args)>1:
+            self.wiki(c,args,e.source.nick,True)
 
    
 ####################################################
 #### COMMAND LOGIC
 ####################################################
-    def wiki(self,c,args,target):
+    def wiki(self,c,args,target,useNotice=False):
         if self.stack == maxTries:
             self.stack = 0;
             return;
@@ -155,15 +172,15 @@ class WikiBot(irc.bot.SingleServerIRCBot):
             page = urllib2.urlopen(url)
         except urllib2.URLError, err: #To-do: Try again
             print(urllib2.URLError, err)
-            return
+            return self.wiki(c,args,target,useNotice)
         try:
             page = page.read()
         except urllib2.URLError, err:
             print(urllib2.URLError, err)
-            return
+            return self.wiki(c,args,target,useNotice)
             
         # Let's strip out examples onwards if we've found them            
-        exampleStart = page.find('<span class="mw-headline" id="Example">')
+        exampleStart = page.find('<span class="mw-headline" id="Example')
         if exampleStart != -1:
             page = page[:exampleStart]
         
@@ -174,7 +191,7 @@ class WikiBot(irc.bot.SingleServerIRCBot):
             a = deprecated.parent.parent.parent.find("a")
             if a:
                 args[1] = a.get('href').replace('/wiki/','')
-                return wiki(c,args,target)
+                return self.wiki(c,args,target,useNotice)
         
         for meta in soup.find_all('meta'):
             if meta.get('name') == 'headingclass':
@@ -186,27 +203,38 @@ class WikiBot(irc.bot.SingleServerIRCBot):
                 else:
                     continue
                 
+                msgQueue = []
+                
                 codeList = soup.select("pre.lang-lua")
                 if codeList[0]:
                     #Try and find a server syntax
                     serverCodeList = soup.select("div.serverContent pre.lang-lua")
                     for code in serverCodeList:
                         fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
-                        outputSyntax(c,fnName,fnTypeNow,code.string,target)
+                        msgQueue.append( markup(fnName,fnTypeNow,code.string) )
                     
                     #Then a client syntax
                     clientCodeList = soup.select("div.clientContent pre.lang-lua")
                     for code in clientCodeList:
                         fnTypeNow = "Client-only function" if fnType.find("function") != -1 else "Clientside event"
-                        outputSyntax(c,fnName,fnTypeNow,code.string,target)
+                        msgQueue.append( markup(fnName,fnTypeNow,code.string) )
                     
                     #Fall back to content without a <section/> tag
                     if len(serverCodeList) == 0 and len(clientCodeList) == 0:
                         for code in codeList:
-                            outputSyntax (c,fnName,fnType,code.string,target)
+                            msgQueue.append( markup(fnName,fnType,code.string) )
                 
-                print("\x02"+url+"\x02")
-                c.privmsg(target,"\x02"+url+"\x02")
+                count = 0
+                urlMsg = "\x02"+url+"\x02"
+                for msg in msgQueue:
+                    if (count == maxMessages) and not useNotice and (target[0] in "#&+!"):
+                        urlMsg = "\x02...tl;dr -\x02 " + urlMsg;
+                        break
+                    self.msg(target,msg,useNotice)
+                    count += 1
+                    
+                self.msg(target,urlMsg,useNotice)
+
                 self.stack = 0
                 return
    
@@ -231,17 +259,13 @@ def syntaxHighlight(str,fnName,color):
     return str
         
 
-def outputSyntax(c,fnName,fnType,text,target):
+def markup(fnName,fnType,text):
     text = cleanString(text)
     color = "%02d" % definitionData[fnType]['color']
     text = syntaxHighlight(text,fnName,color)
     output = "\x02\x03"+color+definitionData[fnType]['name']+"\x02\x03\x0F"
     output += ": " + text
-    print(output)
-    try:
-        c.privmsg(target,output)    
-    except Exception,e: 
-        print str(e)
+    return output
 
 
 ####################################################
