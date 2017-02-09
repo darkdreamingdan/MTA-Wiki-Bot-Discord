@@ -3,10 +3,16 @@ from discord.ext import commands
 from bs4 import BeautifulSoup
 import re
 import requests
+import logging
 
-f = open("password.txt", "r")
-token = f.readline().rstrip()
-f.close()
+"""
+LOGGING
+"""
+logger = logging.getLogger('discord')
+logger.setLevel(logging.DEBUG)
+handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(handler)
 
 """
 CONFIG
@@ -14,8 +20,9 @@ CONFIG
 description = '''MTA wiki bot to grab function syntaxes from the wiki.'''
 bot = commands.Bot(command_prefix=['!', '.'], description=description)
 
-maxMessages = 4  # Maximum number of messages (exc url) before cutting off. Use private commands to avoid
-maxTries = 6   # Maximum number of times to try getting info from wiki
+f = open("password.txt", "r")
+token = f.readline().rstrip()
+f.close()
 
 
 def clean_string(msg):
