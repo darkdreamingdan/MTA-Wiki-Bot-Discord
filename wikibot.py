@@ -45,9 +45,9 @@ def make_output(queue, name):
     """
     msg = ""
     if len(queue) != 0:
-        msg = "**"+name+":**\n```lua\n"
-        msg += "\n".join(queue)
-        msg += "```"
+        msg = "**"+name+":**\n"
+        for s in queue:
+            msg += '```lua\n{0}```'.format(s)
 
     return msg
 
