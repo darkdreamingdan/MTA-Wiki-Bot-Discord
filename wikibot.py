@@ -13,7 +13,7 @@ f.close()
 #### CONFIG
 ####################################################
 description = '''MTA wiki bot to grab function syntaxes from the wiki.'''
-bot = commands.Bot(command_prefix='!', description=description)
+bot = commands.Bot(command_prefix=['!','.'], description=description)
 
 maxMessages = 4 # Maximum number of messages (exc url) before cutting off. Use private commands to avoid
 maxTries = 6   # Maximum number of times to try getting info from wiki
@@ -34,15 +34,10 @@ def make_output(queue, name):
     return msg
 
 
-
-####################################################
-#### COMMAND LOGIC
-####################################################
-@bot.command()
-async def wiki(fnName : str):
+def get_wiki_syntax(fnName):
     url = 'http://wiki.multitheftauto.com/wiki/'+fnName
     page = requests.get(url).text
-    print("yo1")
+
     # Let's strip out examples onwards if we've found them
     exampleStart = page.find('<span class="mw-headline" id="Example')
     if exampleStart != -1:
@@ -54,9 +49,9 @@ async def wiki(fnName : str):
     if deprecated:
         a = deprecated.parent.parent.parent.find("a")
         if a:
-            args[1] = a.get('href').replace('/wiki/','')
-            return wiki(c,args,target,useNotice)
-    print("yo")
+            newName = a.get('href').replace('/wiki/','')
+            return (get_wiki_syntax(newName))
+
     for meta in soup.find_all('meta'):
         if meta.get('name') == 'headingclass':
             msgQueue = {
@@ -70,21 +65,15 @@ async def wiki(fnName : str):
             fnName = soup.select("h1")[0].string
             fnName = fnName[0].lower() + fnName[1:]
             fnType = meta.get('data-subcaption')
-            print(fnType)
+
             if msgQueue.get(fnType) is None:
-                print("NOPE")
                 continue
 
-            print(fnType)
             codeList = soup.select("pre.lang-lua")
-            if codeList[0]:
+            if codeList and codeList[0]:
                 #Try and find a server syntax
-                serverHeadingAdded = False
                 serverCodeList = soup.select("div.serverContent pre.lang-lua")
                 for code in serverCodeList:
-                    if not serverHeadingAdded:
-
-                        serverHeadingAdded = True
                     fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
                     msgQueue[fnTypeNow].append( cleanString(code.string) )
 
@@ -106,10 +95,22 @@ async def wiki(fnName : str):
             msg += make_output(msgQueue["Clientside event"], "Client event")
             msg += make_output(msgQueue["Shared function"], "Both")
 
-            embed = discord.Embed(title="View on Wiki", url=url)
-            print(msg)
-            await bot.say(msg, embed=embed)
-            return
+            embedTitle = "No Parameters Found.  View on Wiki" if msg == "" else "View on Wiki"
+            embed = discord.Embed(title=embedTitle, url=url)
+
+            return msg, embed
+
+
+####################################################
+#### COMMAND LOGIC
+####################################################
+@bot.group(pass_context=True)
+async def wiki(ctx, fnName):
+    msg, embed = get_wiki_syntax(fnName)
+    if ctx.prefix == "!":
+        await bot.say(msg, embed=embed)
+    elif ctx.prefix == ".":
+        await bot.whisper(msg, embed=embed)
    
 ####################################################
 #### MAIN
