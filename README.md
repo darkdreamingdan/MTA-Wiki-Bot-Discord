@@ -1,5 +1,5 @@
-# MTA Wiki Bot
-This is an IRC bot that will parse the Multi Theft Auto wiki (http://wiki.multitheftauto.com) for a function or event parameters.
+# MTA Wiki Bot Discord
+This is an Discord bot that will parse the Multi Theft Auto wiki (http://wiki.multitheftauto.com) for a function or event parameters.  It is a port of the original IRC bot.
 
 Usage is simple.  Either in the designated channel, or in private message, use the following command:
 
@@ -10,23 +10,21 @@ Or:
 
 It gracefully handles Deprecated features, and will print all Syntax Variants and related Handler functions.  It also performs some basic syntax highlighting.  The HTML parsing is fairly robust and could be repurposed for use in Text Editor API generation tools.
 
-![Wikibot output example](http://i.imgur.com/veNfUiH.png)
+![Wikibot output example](http://i.imgur.com/HyHjXxc.png)
 
 # Installation
-You need some Python packages before this will work.  
+You need some Python packages before this will work - beautifulsoup4, requests, and discord.  You can use pip, or a Conda environment definition has been provided:
 
-    pip install beautifulsoup4
-    pip install irc
+1. Install [Anaconda Python](https://www.continuum.io/downloads) or [miniconda Python](http://conda.pydata.org/miniconda.html)  (Version 3.6 reccomended, though either will work)
+2. Create a conda Environment using the `environment.yml`.  This will automatically download all required dependencies:
+	-  `conda env create -f environment.yml`
 
 # Running
-Once you've installed the dependencies, running is easy.  You can modify the following lines to specify the connection details.
+Once you've installed the dependencies, running is easy. 
 
-    channel = "#mta.scripting"
-    nick = "wikibot"
-    server = "irc.gtanet.com"
-    port = 6667
-    nspass = nspass
+1. Edit password.txt with your Discord bot token
+2. Activate the environment:
+	- **Linux, OS X:** `source activate wikibot`
+	- **Windows:** `activate wikibot`
+3. `python wikibot.py`
 
-The `nspass` refers to the NickServ password.  By default, this is read from a password.txt file.  Once everything is configured, simply run the bot:
-
-    python wikibot.py
