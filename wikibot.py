@@ -1,30 +1,41 @@
-#! /usr/bin/env python
 import discord
 from discord.ext import commands
 from bs4 import BeautifulSoup
 import re
 import requests
 
-f = open("password.txt","r")
+f = open("password.txt", "r")
 token = f.readline().rstrip()
 f.close()
 
-####################################################
-#### CONFIG
-####################################################
+"""
+CONFIG
+"""
 description = '''MTA wiki bot to grab function syntaxes from the wiki.'''
-bot = commands.Bot(command_prefix=['!','.'], description=description)
+bot = commands.Bot(command_prefix=['!', '.'], description=description)
 
-maxMessages = 4 # Maximum number of messages (exc url) before cutting off. Use private commands to avoid
+maxMessages = 4  # Maximum number of messages (exc url) before cutting off. Use private commands to avoid
 maxTries = 6   # Maximum number of times to try getting info from wiki
 
-####################################################
-#### STRING OPERATIONS
-####################################################
-def cleanString(str):
-    return (" ").join(str.replace("\t",' ').replace("\n",'').replace("\r",'').split())
+
+def clean_string(msg):
+    """Clean a message string to get rid of tabs and spaces 
+    Args:
+        msg (str): The original chat message 
+    Returns:
+        str: Cleaned message
+    """
+    return " ".join(msg.replace("\t", ' ').replace("\n", '').replace("\r", '').split())
+
 
 def make_output(queue, name):
+    """Make an output a parameter list
+    Args:
+        queue (list): List of code parameters
+        name (str): The name of the type of function
+    Returns:
+        str: A compiled Discord markdown string of the syntaxes
+    """
     msg = ""
     if len(queue) != 0:
         msg = "**"+name+":**\n```lua\n"
@@ -34,27 +45,36 @@ def make_output(queue, name):
     return msg
 
 
-def get_wiki_syntax(fnName):
-    url = 'http://wiki.multitheftauto.com/wiki/'+fnName
+def get_wiki_syntax(fn_name):
+    """Produce a Discord markdown string from a particular function name by looking up the wiki    
+    Args:
+        fn_name (str): The function name to lookup 
+    Returns:
+        str: The Discord message containing the wiki syntaxes
+        embed: A discord embed object containing a link to the Wiki for the function
+    """
+    url = 'http://wiki.multitheftauto.com/wiki/'+fn_name
     page = requests.get(url).text
 
     # Let's strip out examples onwards if we've found them
-    exampleStart = page.find('<span class="mw-headline" id="Example')
-    if exampleStart != -1:
-        page = page[:exampleStart]
+    example_start = page.find('<span class="mw-headline" id="Example')
+    if example_start != -1:
+        page = page[:example_start]
 
     soup = BeautifulSoup(page, 'html.parser')
-    #Scan for deprecated functions
-    deprecated = soup.find(text=re.compile('This function is deprecated. This means that its use is discouraged and that it might not exist in future versions.'))
+    # Scan for deprecated functions
+    deprecated = 'This function is deprecated. This means that its use is discouraged and that it might not exist in ' \
+                 'future versions.'
+    deprecated = soup.find(text=re.compile(deprecated))
     if deprecated:
         a = deprecated.parent.parent.parent.find("a")
         if a:
-            newName = a.get('href').replace('/wiki/','')
-            return (get_wiki_syntax(newName))
+            new_name = a.get('href').replace('/wiki/', '')
+            return get_wiki_syntax(new_name)
 
     for meta in soup.find_all('meta'):
         if meta.get('name') == 'headingclass':
-            msgQueue = {
+            msg_queue = {
                 "Server-only function": [],
                 "Serverside event": [],
                 "Client-only function": [],
@@ -62,59 +82,63 @@ def get_wiki_syntax(fnName):
                 "Shared function": [],
             }
 
-            fnName = soup.select("h1")[0].string
-            fnName = fnName[0].lower() + fnName[1:]
-            fnType = meta.get('data-subcaption')
+            fn_name = soup.select("h1")[0].string
+            fn_name = fn_name[0].lower() + fn_name[1:]
+            fn_type = meta.get('data-subcaption')
 
-            if msgQueue.get(fnType) is None:
+            if msg_queue.get(fn_type) is None:
                 continue
 
-            codeList = soup.select("pre.lang-lua")
-            if codeList and codeList[0]:
-                #Try and find a server syntax
-                serverCodeList = soup.select("div.serverContent pre.lang-lua")
-                for code in serverCodeList:
-                    fnTypeNow = "Server-only function" if fnType.find("function") != -1 else "Serverside event"
-                    msgQueue[fnTypeNow].append( cleanString(code.string) )
+            code_list = soup.select("pre.lang-lua")
+            if code_list and code_list[0]:
+                # Try and find a server syntax
+                server_code_list = soup.select("div.serverContent pre.lang-lua")
+                for code in server_code_list:
+                    fn_type_now = "Server-only function" if fn_type.find("function") != -1 else "Serverside event"
+                    msg_queue[fn_type_now].append(clean_string(code.string))
 
-                #Then a client syntax
-                clientCodeList = soup.select("div.clientContent pre.lang-lua")
-                for code in clientCodeList:
-                    fnTypeNow = "Client-only function" if fnType.find("function") != -1 else "Clientside event"
-                    msgQueue[fnTypeNow].append(cleanString(code.string))
+                # Then a client syntax
+                client_code_list = soup.select("div.clientContent pre.lang-lua")
+                for code in client_code_list:
+                    fn_type_now = "Client-only function" if fn_type.find("function") != -1 else "Clientside event"
+                    msg_queue[fn_type_now].append(clean_string(code.string))
 
-                #Fall back to content without a <section/> tag
-                if len(serverCodeList) == 0 and len(clientCodeList) == 0:
-                    for code in codeList:
-                        msgQueue[fnType].append(cleanString(code.string))
+                # Fall back to content without a <section/> tag
+                if len(server_code_list) == 0 and len(client_code_list) == 0:
+                    for code in code_list:
+                        msg_queue[fn_type].append(clean_string(code.string))
 
             msg = ""
-            msg += make_output(msgQueue["Server-only function"], "Server")
-            msg += make_output(msgQueue["Client-only function"], "Client")
-            msg += make_output(msgQueue["Serverside event"], "Server event")
-            msg += make_output(msgQueue["Clientside event"], "Client event")
-            msg += make_output(msgQueue["Shared function"], "Both")
+            msg += make_output(msg_queue["Server-only function"], "Server")
+            msg += make_output(msg_queue["Client-only function"], "Client")
+            msg += make_output(msg_queue["Serverside event"], "Server event")
+            msg += make_output(msg_queue["Clientside event"], "Client event")
+            msg += make_output(msg_queue["Shared function"], "Both")
 
-            embedTitle = "No Parameters Found.  View on Wiki" if msg == "" else "View on Wiki"
-            embed = discord.Embed(title=embedTitle, url=url)
+            embed_title = "No Parameters Found.  View on Wiki" if msg == "" else "View on Wiki"
+            embed = discord.Embed(title=embed_title, url=url)
 
             return msg, embed
 
 
-####################################################
-#### COMMAND LOGIC
-####################################################
+"""
+COMMAND LOGIC
+"""
+
+
 @bot.group(pass_context=True)
-async def wiki(ctx, fnName):
-    msg, embed = get_wiki_syntax(fnName)
+async def wiki(ctx, fn_name):
+    msg, embed = get_wiki_syntax(fn_name)
     if ctx.prefix == "!":
         await bot.say(msg, embed=embed)
     elif ctx.prefix == ".":
         await bot.whisper(msg, embed=embed)
    
-####################################################
-#### MAIN
-####################################################
+"""
+MAIN
+"""
+
+
 def main():
     bot.run(token)
 
