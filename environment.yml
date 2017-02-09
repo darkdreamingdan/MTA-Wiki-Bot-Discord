@@ -1,0 +1,11 @@
+name: wikibot
+channels: !!python/tuple
+- !!python/unicode
+  'defaults'
+dependencies:
+- python=3.6.0=0
+- beautifulsoup4
+- pip
+- requests
+- pip:
+  - discord.py==0.16.5
