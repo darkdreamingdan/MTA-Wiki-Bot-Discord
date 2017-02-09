@@ -12,7 +12,14 @@ It gracefully handles Deprecated features, and will print all Syntax Variants an
 
 ![Wikibot output example](http://i.imgur.com/HyHjXxc.png)
 
+# Getting the bot on your server
+
+The bot is available to be added to other Discord servers upon request.  Just contact me and I can setup the bot on your server so you don't have to host it yourself.
+
+
 # Installation
+These instructions are if you want to run the bot yourself.  You'll need a [Discord token](https://github.com/reactiflux/discord-irc/wiki/Creating-a-discord-bot-&-getting-a-token) for this to work.
+
 You need some Python packages before this will work - beautifulsoup4, requests, and discord.  You can use pip, or a Conda environment definition has been provided:
 
 1. Install [Anaconda Python](https://www.continuum.io/downloads) or [miniconda Python](http://conda.pydata.org/miniconda.html)  (Version 3.6 reccomended, though either will work)
